@@ -1,0 +1,112 @@
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neural_network import MLPClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+import joblib
+
+# 1. Load the dataset
+dataset_url = "https://archive.ics.uci.edu/ml/machine-learning-databases/tic-tac-toe/tic-tac-toe.data"
+columns = [f'pos{i}' for i in range(1, 10)] + ['class']
+df = pd.read_csv(dataset_url, names=columns)
+
+# 2. Map values
+mapping = {'x': 1, 'o': -1, 'b': 0}
+for col in columns[:-1]:
+    df[col] = df[col].map(mapping)
+
+# 3. Display original class distribution
+print("Original class distribution:")
+print(df['class'].value_counts())
+
+# 4. Balance the dataset
+min_class_count = df['class'].value_counts().min()
+df_balanced = df.groupby('class', group_keys=False).apply(lambda x: x.sample(n=min_class_count, random_state=42))
+
+# 5. Split into X and y
+X = df_balanced[columns[:-1]]
+y = df_balanced['class']
+
+# 6. Split into train, val, test (60/20/20)
+X_temp, X_test, y_temp, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+X_train, X_val, y_train, y_val = train_test_split(X_temp, y_temp, test_size=0.25, random_state=42, stratify=y_temp)  # 0.25 x 0.8 = 0.2
+
+print(f"Train size: {len(X_train)}, Val size: {len(X_val)}, Test size: {len(X_test)}")
+print("Balanced class distribution in train set:")
+print(y_train.value_counts())
+
+# 7. Train models with GridSearchCV
+# KNN
+knn = KNeighborsClassifier()
+knn_param_grid = {
+    'n_neighbors': [3, 5, 7],
+    'weights': ['uniform', 'distance']
+}
+knn_grid = GridSearchCV(knn, knn_param_grid, cv=5)
+knn_grid.fit(X_train, y_train)
+knn_best = knn_grid.best_estimator_
+
+# MLP
+mlp = MLPClassifier(max_iter=1000, random_state=42)
+mlp_param_grid = {
+    'hidden_layer_sizes': [(50,), (100,)],
+    'activation': ['relu', 'tanh']
+}
+mlp_grid = GridSearchCV(mlp, mlp_param_grid, cv=5)
+mlp_grid.fit(X_train, y_train)
+mlp_best = mlp_grid.best_estimator_
+
+# Decision Tree
+dt = DecisionTreeClassifier(random_state=42)
+dt_param_grid = {
+    'max_depth': [3, 5, 7],
+    'min_samples_split': [2, 5, 10]
+}
+dt_grid = GridSearchCV(dt, dt_param_grid, cv=5)
+dt_grid.fit(X_train, y_train)
+dt_best = dt_grid.best_estimator_
+
+# Random Forest
+rf = RandomForestClassifier(random_state=42)
+rf_param_grid = {
+    'n_estimators': [50, 100],
+    'max_depth': [5, 10]
+}
+rf_grid = GridSearchCV(rf, rf_param_grid, cv=5)
+rf_grid.fit(X_train, y_train)
+rf_best = rf_grid.best_estimator_
+
+print("Modelos treinados e melhores hiperparâmetros encontrados!")
+
+# 8. Comparação dos modelos
+models = {
+    "KNN": knn_best,
+    "MLP": mlp_best,
+    "Decision Tree": dt_best,
+    "Random Forest": rf_best
+}
+
+results = []
+for name, model in models.items():
+    y_pred = model.predict(X_val)
+    results.append({
+        "Model": name,
+        "Accuracy": accuracy_score(y_val, y_pred),
+        "Precision": precision_score(y_val, y_pred, pos_label='positive'),
+        "Recall": recall_score(y_val, y_pred, pos_label='positive'),
+        "F1": f1_score(y_val, y_pred, pos_label='positive')
+    })
+
+results_df = pd.DataFrame(results)
+print("\nComparação dos modelos no conjunto de validação:")
+print(results_df)
+
+# 9. Escolha o melhor modelo (exemplo: rf_best, mas pode ser outro)
+melhor_modelo = rf_best  # Troque para knn_best, mlp_best, dt_best se quiser
+
+# 10. Salve o modelo
+joblib.dump(melhor_modelo, 'meu_modelo_treinado.pkl')
+print('Modelo salvo em meu_modelo_treinado.pkl') 
