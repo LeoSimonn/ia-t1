@@ -72,18 +72,27 @@ class JogoVelha(QWidget):
 
     def checa_vitoria(self):
         tab = self.estado
+
+        # Verifica linhas e colunas
         for i in range(3):
             if abs(tab[i, :].sum()) == 3:
                 return np.sign(tab[i, 0])
             if abs(tab[:, i].sum()) == 3:
                 return np.sign(tab[0, i])
+
+        # Verifica diagonais
         if abs(np.diag(tab).sum()) == 3:
             return np.sign(tab[0, 0])
         if abs(np.diag(np.fliplr(tab)).sum()) == 3:
             return np.sign(tab[0, 2])
+
+        # Verifica se o jogo está empatado (nenhuma célula vazia e ninguém venceu)
         if not (tab == 0).any():
             return 2  # Empate
-        return 0  # Ainda em jogo
+
+        # Caso contrário, o jogo ainda está em andamento
+        return 0
+
 
     def jogada_usuario(self, i, j):
         if self.estado[i, j] != 0 or self.fim:
@@ -108,17 +117,24 @@ class JogoVelha(QWidget):
         vitoria = self.checa_vitoria()
         features = self.estado_para_features()
         pred = modelo.predict(features)[0]
-        # Atualiza label da predição da IA
+
+        # Atualiza label da predição da IA com base no novo conjunto de classes
         if pred == 'positive':
             ia_msg = 'X venceu'
         elif pred == 'negative':
+            # A classe "negative" pode incluir derrota de X ou empate — checa o valor real
             if vitoria == 2 or (vitoria == 0 and not (self.estado == 0).any()):
                 ia_msg = 'Empate'
             else:
                 ia_msg = 'O venceu'
-        else:
+        elif pred == 'in_progress':
             ia_msg = 'Ainda em jogo'
+        else:
+            ia_msg = 'Classe desconhecida pela IA'
+
         self.ia_label.setText(ia_msg)
+
+        # Determina o estado real
         if vitoria == 1:
             real = 'positive'
             msg = 'Você venceu!'
@@ -129,25 +145,29 @@ class JogoVelha(QWidget):
             real = 'negative'
             msg = 'Empate!'
         else:
-            real = None
+            real = 'in_progress'
             msg = 'Ainda em jogo'
+
         self.status_label.setText(msg)
-        if real is not None:
-            self.total += 1
-            if pred == real:
-                self.acertos += 1
-                self.status_label.setText(self.status_label.text() + ' | IA acertou.')
-            else:
-                self.erros += 1
-                self.status_label.setText(self.status_label.text() + ' | IA ERROU.')
+
+        # Avalia se a IA acertou ou errou
+        self.total += 1
+        if pred == real:
+            self.acertos += 1
+            self.status_label.setText(self.status_label.text() + ' | IA acertou.')
+        else:
+            self.erros += 1
+            self.status_label.setText(self.status_label.text() + ' | IA ERROU.')
+
+            # Se IA errou e o jogo acabou, encerrar
+            if vitoria != 0:
+                self.status_label.setText(self.status_label.text() + ' Jogo encerrado: IA não detectou o fim corretamente.')
                 self.fim = True
                 self.desabilita_botoes()
-                self.status_label.setText(self.status_label.text() + ' Jogo encerrado: IA não detectou o fim corretamente.')
-            self.atualiza_contadores()
-            self.fim = True
-            self.desabilita_botoes()
-        elif pred in ['positive', 'negative'] and real is None:
-            self.status_label.setText(self.status_label.text() + ' | IA detectou fim incorretamente. Jogo continua.')
+
+        self.atualiza_contadores()
+
+        # Encerrar o jogo se houve vitória ou empate
         if vitoria != 0:
             self.fim = True
             self.desabilita_botoes()
